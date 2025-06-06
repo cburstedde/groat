@@ -122,6 +122,7 @@ static unsigned int voice_delpha[4];
 static unsigned char seq_millis;
 static unsigned int last_sync;
 static unsigned int sync_interval;
+static unsigned int last_interval = 1 << 15;
 static unsigned char ttime[6], seq_target;
 static unsigned char mtick, pulse, beat;
 static unsigned char seq_pulses = 16;
@@ -363,7 +364,6 @@ static void groat_IO_off (void) {
 
 /* divide one 1/16 time interval into 6 MIDI tick intervals */
 static void groat_seq_divide (void) {
-	static unsigned int last_interval = 1 << 15;
 
 	/* optimize away an exact duplicate result */
 	if (sync_interval != last_interval) {
@@ -650,24 +650,6 @@ static void groat_loop (void) {
 		/* this is the second fall-through path */
 	}
 
-	/* handle external sync signal */
-	if (synced) {
-		/* do we have a legal elapsed time */
-		sync_interval = millsync - last_sync;
-		if (SYNC_MINIMUM <= sync_interval && sync_interval <= SYNC_MAXIMUM) {
-
-			/* calculate new tick intervals */
-			groat_seq_divide ();
-		}
-
-		/* update state for the next time */
-		last_sync = millsync;
-		synced = 0;
-
-		/* we have done enough for one loop iteration */
-		return;
-	}
-
 	/* operate the sequencer */
 	const unsigned char seqdiff = millbyte - seq_millis;
 	if (seqdiff >= seq_target) {
@@ -705,6 +687,44 @@ static void groat_loop (void) {
 			/* this is BUTTON_ERASE */
 			tone_state = sequence[beat] &= ~voice_pads;
 		}
+
+		/* we have done enough for one loop iteration */
+		return;
+	}
+
+	/* handle external sync signal */
+	if (synced) {
+		/* do we have a legal elapsed time */
+		sync_interval = millsync - last_sync;
+		if (SYNC_MINIMUM <= sync_interval && sync_interval <= SYNC_MAXIMUM) {
+			unsigned char SH, second;
+
+			/* calculate new tick intervals */
+			if (mtick < 3) {
+
+				/* the pulse came in late: sequencer ist too fast */
+				SH = (sync_interval + 1) >> 1;
+				second = (SH * (0x56 + (mtick << 2))) >> 8;
+
+				/* enlarging the time does not risk a tick miss */
+				seq_target = second;
+			}
+			else {
+
+				/* the pulse came in early: sequencer ist too slow */
+				SH = sync_interval >> 1;
+				second = (SH * (0x55 - ((5 - mtick) << 2))) >> 8;
+			}
+			ttime[0] = ttime[1] = ttime[2] = second;
+			ttime[3] = ttime[4] = ttime[5] = second;
+
+			/* remember latest configuration */
+			last_interval = sync_interval;
+		}
+
+		/* update state for the next time */
+		last_sync = millsync;
+		synced = 0;
 
 		/* we have done enough for one loop iteration */
 		return;
