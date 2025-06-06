@@ -1015,3 +1015,8 @@ int main () {
 		groat_loop ();
 	}
 }
+
+/*
+ * vim: set tabstop=8 shiftwidth=8:
+ * vim: set softtabstop=0 noexpandtab:
+ */
